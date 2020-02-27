@@ -44,7 +44,7 @@ operator-courier push eclipse-che-preview-openshift/deploy/olm-catalog/eclipse-c
 export KUBECONFIG=.kubeconfig
 ```
 
-- Deploy the deocker v2 mirror registry to the new cluster
+- Deploy the docker v2 mirror registry to the new cluster
 
 ```
 ./deploy-registry.sh
@@ -58,20 +58,20 @@ sudo cp mirror-docker-registry-ca.crt /etc/pki/ca-trust/source/anchors
 sudo update-ca-trust
 ```
 
-- Restart the docker deamon and test the login to the new mirror registry
+- Restart the docker deamon and test the login to the new mirror registry (any user / password is OK, since the registry is public)
 
 ```
 sudo systemctl restart docker.service
 docker login $REGISTRY_HOST 
 ```
 
-- Disable the default OperatorSources by adding disableAllDefaultSources:
+- Disable the default OperatorSources in the Cluster. Nothing should appear in the OperatorHub catalog anymore:
 
 ```
 oc patch OperatorHub cluster --type json -p '[{"op": "add", "path": "/spec/disableAllDefaultSources", "value": true}]'
 ```
 
-- Build the local catalog from teh Quay.io application and push it to the mirror docker registry
+- Build the local catalog from your Quay.io application and push it to the mirror docker registry:
 
 ```
 oc adm catalog build --appregistry-endpoint https://quay.io/cnr --appregistry-org ${MY_QUAY_ORG} --to=${REGISTRY_HOST}/catalog/eclipse-che-preview-openshift:v1
@@ -84,23 +84,30 @@ oc adm catalog mirror --manifests-only=true ${REGISTRY_HOST}/catalog/eclipse-che
 oc image mirror --max-per-registry=1 --filename=eclipse-che-preview-openshift-manifests/mapping.txt
 ```
 
-- Apply the ImageContentSourcePolicy generated in the `eclipse-che-preview-openshift-manifests` folder by the previous step 
+- Apply the `ImageContentSourcePolicy` generated in the `eclipse-che-preview-openshift-manifests` folder by the previous step:
 
 ```
 oc apply -f ./eclipse-che-preview-openshift-manifests/
 ```
 
-- Wait for the end of the configuration update of all nodes, until all 2 MachineConfigPools (master and workers) are fully updated
+- Wait for the end of the configuration update and restart of all cluster nodes, until all 2 `MachineConfigPool`s (master and workers) are fully updated.
 
-- Deploy the local catalog and operator group to prepare operator installation
+- Deploy the local catalog matadata and operator group to prepare operator installation:
  
 ```
 ./deploy-catalog.sh
 ```
 
-- Add at least a real user besides kubeadmin (via adding a htpasswd identity provider and logging at least once as a regular user)
-
 - Go into the `test-restricted-che-install` namespace
-- Create CheCluster custom resource to start the installation
-- In the logs of the `mirror-docker-registry` POD (in the `mirror-docker-registry` namespace), hook how, during the installation, the Che images are automatically pulled from the internal registry.
 
+- In the OperatorHub, you shoud now see the Eclipse Che operator available for installation 
+
+- Install it as usual.
+
+- While it is installing, In the logs of the `mirror-docker-registry` POD (in the `mirror-docker-registry` namespace) you should already see that the Che operator image is automatically pulled from the internal registry.
+
+- Add at least a real user besides `kubeadmin` (via adding a `htpasswd` identity provider and logging at least once as a regular user)
+
+- Create `CheCluster` custom resource to start the installation
+
+- In the logs of the `mirror-docker-registry` POD (in the `mirror-docker-registry` namespace), look how, during the installation, the Che images are automatically pulled from the internal registry.
