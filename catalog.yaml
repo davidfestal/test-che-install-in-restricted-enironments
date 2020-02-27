@@ -1,0 +1,28 @@
+kind: "Template"
+apiVersion: "v1"
+metadata:
+  name: my-template
+objects:
+  - apiVersion: operators.coreos.com/v1alpha2
+    kind: OperatorGroup
+    metadata:
+      name: operatorgroup
+      namespace: ${CHE_NAMESPACE}
+    spec:
+      targetNamespaces:
+      - ${CHE_NAMESPACE}
+  - apiVersion: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    metadata:
+      name: eclipse-che-preview-openshift
+      namespace: openshift-marketplace
+    spec:
+      sourceType: grpc
+      image: ${REGISTRY_HOST}/catalog/eclipse-che-preview-openshift:v1 
+      displayName: My Restricted Eclipse Che Catalog
+      publisher: grpc
+parameters:
+- description: Registry Host
+  name: REGISTRY_HOST
+- description: Che install namespace
+  name: CHE_NAMESPACE

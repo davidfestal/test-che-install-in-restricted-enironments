@@ -1,0 +1,92 @@
+kind: "Template"
+apiVersion: "v1"
+metadata:
+  name: my-template
+objects:
+  - kind: PersistentVolumeClaim
+    apiVersion: v1
+    metadata:
+      name: mirror-docker-registry 
+      namespace: mirror-docker-registry 
+    spec:
+      accessModes:
+        - ReadWriteOnce 
+      resources:
+        requests:
+          storage: 10Gi
+  - kind: Deployment
+    apiVersion: apps/v1
+    metadata:
+      name: mirror-docker-registry
+      namespace: mirror-docker-registry 
+      labels:
+        app: mirror-docker-registry
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: mirror-docker-registry
+      template:
+        metadata:
+          labels:
+            app: mirror-docker-registry
+        spec:
+          volumes:
+            - name: registry
+              persistentVolumeClaim:
+                claimName: mirror-docker-registry
+            - name: auth
+              secret:
+                secretName: mirror-docker-registry
+          containers:
+            - name: mirror-docker-registry
+              image: >-
+                quay.io/dfestal/docker-registry-for-openshift:2.6.2
+              ports:
+                - containerPort: 5000
+                  protocol: TCP
+              volumeMounts:
+                - name: registry
+                  mountPath: /var/lib/registry
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: REGISTRY_HTTP_HOST
+                  value: https://${REGISTRY_HOST}
+  - kind: Service
+    apiVersion: v1
+    metadata:
+      name: mirror-docker-registry
+      namespace: mirror-docker-registry
+      labels:
+        app: mirror-docker-registry
+    spec:
+      ports:
+        - name: 5000-tcp
+          protocol: TCP
+          port: 5000
+          targetPort: 5000
+      selector:
+        app: mirror-docker-registry
+      type: ClusterIP
+  - kind: Route
+    apiVersion: route.openshift.io/v1
+    metadata:
+      name: route
+      namespace: mirror-docker-registry
+      labels:
+        app: mirror-docker-registry
+      annotations:
+        openshift.io/host.generated: 'true'
+    spec:
+      to:
+        kind: Service
+        name: mirror-docker-registry
+      port:
+        targetPort: 5000-tcp
+      tls:
+        termination: edge
+        insecureEdgeTerminationPolicy: None
+      wildcardPolicy: None
+parameters:
+- description: Registry Host
+  name: REGISTRY_HOST
