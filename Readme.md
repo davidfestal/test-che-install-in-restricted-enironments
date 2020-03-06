@@ -16,9 +16,9 @@ Source documentation used to build this procedure can be found at the following 
 - This can be applied on **any OpenShift 4.3 cluster having at least 2 master nodes** (=> **not** CRC),
 even if the cluster is not really disconnected
 - The main goal is to check that, finally, all the CHE-relate docker images are **pulled from the mirror docker registry** instead of the initial external registry (quay.io, docker.io, ...)
-- To make installation easier, the mirror docker registry is **deployed inside the cluster and made available through a route**. This allows the mirror docker registry being reachable even from a cluster that cannot reach any local machine.
+- To make installation easier, when no mirror registry is already available, this procedure provides [optional instruction](#Start-a-cluster-and-deploy-the-mirror-docker-registry-on-the-cluster-option-1) to install a mirror docker registry is **deployed inside the cluster and made available through a route**. This allows the mirror docker registry being reachable even from a cluster that cannot reached any local machine.
 This differs from the official documentation which requires installing the mirror docker registry on a bastion host that is both connected to the internet and reachable by the cluster. However this difference doesn't impact the tests we're doing here.
-- Another difference is that the mirror docker registry deployed here **doesn't have any authentication** to make pulls from the cluster easy, without having to add credentials in the cluster. In real-life scenarios it would have some authentication. However this also doesn't impact the meaningfullness of these tests.
+- Another difference in that case is that the mirror docker registry deployed here **doesn't have any authentication** to make pulls from the cluster easy, without having to add credentials in the cluster. In real-life scenarios it would have some authentication. However this also doesn't impact the meaningfullness of these tests.
 
 ### Steps to apply
 
