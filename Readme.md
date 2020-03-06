@@ -23,119 +23,199 @@ This differs from the official documentation which requires installing the mirro
 ### Steps to apply
 
 
-##### Prepare the package with digests and relatedImages
+#### Prepare the package with digests and relatedImages
 
 - Download the last 4.3.1 oc command line tool from https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest-4.3/
 
-- Replace tags with digests in the CSV by using:
+- Optionally change/modify the content of the example OLM package + CSV available in [`eclipse-che-preview-openshift/deploy/olm-catalog/eclipse-che-preview-openshift` folder](./eclipse-che-preview-openshift/deploy/olm-catalog/eclipse-che-preview-openshift) of this GitHub repository.
 
-```bash
-skopeo inspect docker://quay.io/eclipse/che-operator:7.9.0 | jq '.Digest'
-etc ...
-```
+  **NOTE:** The Upstream Che devfile and plugin registries seem to be currently incompatible with restricted environment, since they finally reference several images with the same name and distinct tags. That's **not** the case of the CRW registries, so the docker images of registries in this Upstream Che OLM package were replaced with the `2.1` CRW registries rebuilt with options similar to the following build arguments:
 
-- Add `relatedImages` fields in the CSV:
+    - for the devfile registry:
+    
+    ```
+    --use-digests --offline
+    ```
 
-```bash
-skopeo inspect docker://quay.io/eclipse/che-plugin-registry:7.9.0 | jq '.Digest'
-etc ...
-```
+    - for the plugin registry:
+    
+    ```
+    --use-digests --offline --latest-only
+    ```
 
-- This will mainly produce content similar to what is already prepared in the [`eclipse-che-preview-openshift/deploy/olm-catalog/eclipse-che-preview-openshift` folder](./eclipse-che-preview-openshift/deploy/olm-catalog/eclipse-che-preview-openshift) of this GitHub repository.
 
-##### Push the OLM package to a Quay.io application
+- Replace tags with digests in the CSV, and add the `replaceImages` field by using the following script:
+
+  ```bash
+  ./addDigests.sh
+  ```
+
+  This will create an updated CSV into the following folder:
+
+  ```
+  generated/eclipse-che-preview-openshift/7.9.0/
+  ```
+
+#### Push the generated OLM package to a Quay.io application
 
 - Setup your `AUTH_TOKEN` to Connect to Quay (after providing your `quay.io` user name and password as environment variables).
 
-```bash
-AUTH_TOKEN=$(curl -sH "Content-Type: application/json" -XPOST https://quay.io/cnr/api/v1/users/login -d '                                     
-{                  
-    "user": {
-        "username": "'"${QUAY_USERNAME}"'",
-        "password": "'"${QUAY_PASSWORD}"'"
-    }
-}' | jq -r '.token')
-```
+  ```bash
+  AUTH_TOKEN=$(curl -sH "Content-Type: application/json" -XPOST https://quay.io/cnr/api/v1/users/login -d '                                     
+  {                  
+      "user": {
+          "username": "'"${QUAY_USERNAME}"'",
+          "password": "'"${QUAY_PASSWORD}"'"
+      }
+  }' | jq -r '.token')
+  ```
 
 - Define your Quay organization you want to push the OLM package to as a Quay application (change `dfestal-tests` to the chosen organization):
 
-```bash
-export MY_QUAY_ORG=dfestal-tests
-```
+  ```bash
+  export MY_QUAY_ORG=dfestal-tests
+  ```
 
 - Push the catalog to your Quay application:
 
-```bash
-operator-courier push eclipse-che-preview-openshift/deploy/olm-catalog/eclipse-che-preview-openshift ${MY_QUAY_ORG} eclipse-che-preview-openshift 9.9.$(date +%s) "$AUTH_TOKEN"
-```
+  ```bash
+  operator-courier push generated/eclipse-che-preview-openshift ${MY_QUAY_ORG} eclipse-che-preview-openshift 9.9.$(date +%s) "$AUTH_TOKEN"
+  ```
 
-##### Deploy the mirror docker registry on the cluster
+#### Start a cluster and deploy the mirror docker registry on the cluster (option 1)
+
+**NOTE:** The steps in this section are not required if you already installed a disconnected cluster as well as a mirror registry
 
 - Start a cluster on cluster bot for example, download the provided kubeconfig as the `.kubeconfig` file
 
-```bash
-export KUBECONFIG=.kubeconfig
-```
+  ```bash
+  export KUBECONFIG=.kubeconfig
+  ```
+
+- Log to the Openshift cluster as `kubeadmin`
+
+  ```bash
+  oc login
+  ```
 
 - Deploy the docker v2 mirror registry to the new cluster. It will create the registry in the fixed `mirror-docker-registry` namespace
 
-```bash
-./deploy-registry.sh
-export REGISTRY_HOST="route-mirror-docker-registry.$(oc get ingresses.config.openshift.io cluster -o=jsonpath='{ .spec.domain }')"
-```
+  ```bash
+  ./deploy-registry.sh
+  export REGISTRY_HOST="route-mirror-docker-registry.$(oc get ingresses.config.openshift.io cluster -o=jsonpath='{ .spec.domain }')"
+  ```
 
 - Add the certificates of the mirror docker registry to the trusted certificates of the local machine (warning: instructions for RHEL / Centos here)
  
-```bash
-sudo cp mirror-docker-registry-ca.crt /etc/pki/ca-trust/source/anchors
-sudo update-ca-trust
-```
+  ```bash
+  sudo cp mirror-docker-registry-ca.crt /etc/pki/ca-trust/source/anchors
+  sudo update-ca-trust
+  ```
 
 - Restart the docker deamon and test the login to the new mirror registry (any user / password is OK, since the registry has not authentication)
 
-```bash
-sudo systemctl restart docker.service
-docker login $REGISTRY_HOST 
-```
+  ```bash
+  sudo systemctl restart docker.service
+  docker login $REGISTRY_HOST 
+  ```
 
-##### Mirror the OLM package Quay.io application to the cluster
+#### Connect to an existing disconnected cluster and associated mirror docker registry (option 2)
 
-- Disable the default OperatorSources in the Cluster. Nothing should appear in the OperatorHub catalog anymore:
+**NOTE:** The steps in this alternate section are only required if you already installed a disconnected cluster as well as a mirror registry
 
-```bash
-oc patch OperatorHub cluster --type json -p '[{"op": "add", "path": "/spec/disableAllDefaultSources", "value": true}]'
-```
+- Retrieve the cluster kubeconfig, and save it as the `.kubeconfig` file. Then create the following environemnt variable:
+
+  ```bash
+  export KUBECONFIG=.kubeconfig
+  ```
+
+  **NOTE:** If you created the disconnected environment from a Flex Jenkins Job, the kubeconfig should be available in the build artifacts, at the following related path:
+  ```
+  workdir/install-dir/auth/kubeconfig
+  ```
+
+- Log to the Openshift cluster as `kubeadmin`
+
+  ```bash
+  oc login
+  ```
+
+  The `kubeadmin` password is provided in a file at the same place.
+
+- Set the following variable to be the `<host>:<port>` of your docker mirror on your bastion host
+
+  ```bash
+  export REGISTRY_HOST="<host>:<port>"
+  ```
+
+  **NOTE:** If you created the disconnected environment from a Flex Jenkins Job, the registry host is provided by the `INT_SVC_INSTANCE_PUBLIC_IP` field of the build artifact at the following related path:
+  ```
+  workdir/install-dir/src_cluster_info.json
+  ```
+  And the registry port is `5000`
+
+- Add the certificates of the mirror docker registry to the trusted certificates of the local machine (warning: instructions for RHEL / Centos here)
+ 
+  ```bash
+  sudo cp <docker registry public certificate authority file> /etc/pki/ca-trust/source/anchors
+  sudo update-ca-trust
+  ```
+
+  **NOTE:** If you created the disconnected environment from a Flex Jenkins Job, the certificate should be
+  available by decoding the `base64` value found in the
+  `additional_ca` field of the chosen Jenkins Job template.
+
+- Restart your docker deamon and test the login to the new mirror registry (any user / password is OK, since the registry has not authentication)
+
+  ```bash
+  sudo systemctl restart docker.service
+  docker login $REGISTRY_HOST 
+  ```
+
+#### Mirror the OLM package Quay.io application to the cluster
 
 - Build the local catalog from your Quay.io application and push it to the mirror docker registry:
 
-```bash
-oc adm catalog build --appregistry-endpoint https://quay.io/cnr --appregistry-org ${MY_QUAY_ORG} --to=${REGISTRY_HOST}/catalog/eclipse-che-preview-openshift:v1
-```
+  ```bash
+  oc adm catalog build --appregistry-endpoint https://quay.io/cnr --appregistry-org ${MY_QUAY_ORG} --to=${REGISTRY_HOST}/catalog/eclipse-che-preview-openshift:v1
+  ```
 
 - Mirror the docker images referenced by your local catalog to your mirror docker registry.
 
-```bash
-oc adm catalog mirror --manifests-only=true ${REGISTRY_HOST}/catalog/eclipse-che-preview-openshift:v1 ${REGISTRY_HOST}
-oc image mirror --max-per-registry=1 --filename=eclipse-che-preview-openshift-manifests/mapping.txt
-```
+  ```bash
+  oc adm catalog mirror --manifests-only=true ${REGISTRY_HOST}/catalog/eclipse-che-preview-openshift:v1 ${REGISTRY_HOST}
+  oc image mirror --max-per-registry=1 --filename=eclipse-che-preview-openshift-manifests/mapping.txt
+  ```
 
 - Apply the `ImageContentSourcePolicy` generated in the `eclipse-che-preview-openshift-manifests` folder by the previous step:
 
-```bash
-oc apply -f ./eclipse-che-preview-openshift-manifests/
-```
+  ```bash
+  oc apply -f ./eclipse-che-preview-openshift-manifests/
+  ```
 
 - Wait for the end of the configuration update and restart of all cluster nodes, until all 2 `MachineConfigPool`s (master and workers) are fully updated.
 
-##### Install the local catalog source, subscribe and  test
+#### Install the local catalog source, subscribe and  test
+
+- Get the OpenShift console URL by running:
+
+  ```bash
+  echo "https://$(oc get routes console -n openshift-console --output=jsonpath={.spec.host})"
+  ```
+
+- Disable the default OperatorSources in the Cluster. Nothing should appear in the OperatorHub catalog anymore:
+
+  ```bash
+  oc patch OperatorHub cluster --type json -p '[{"op": "add", "path": "/spec/disableAllDefaultSources", "value": true}]'
+  ```
 
 - Deploy the local catalog matadata and operator group to prepare operator installation. This will create a fixed `test-restricted-che-install` namespace and propose the operator inside it
  
-```bash
-./deploy-catalog.sh
-```
+  ```bash
+  ./deploy-catalog.sh
+  ```
 
-- Go into the `test-restricted-che-install` namespace
+- In the Openshift console, go into the `test-restricted-che-install` namespace
 
 - In the OperatorHub, you shoud now see the Eclipse Che operator available for installation 
 
