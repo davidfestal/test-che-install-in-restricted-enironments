@@ -1,2 +1,5 @@
 generated/
 eclipse-che-preview-openshift-manifests/
+mirror-docker-registry-ca.crt
+oc
+.kubeconfig
